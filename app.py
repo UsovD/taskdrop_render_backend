@@ -58,7 +58,8 @@ def get_user_by_telegram_id(telegram_id):
     with sqlite3.connect(DB) as conn:
         conn.row_factory = dict_factory
         c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+        # Теперь id и telegram_id одинаковые, но мы можем проверить по обоим полям для обратной совместимости
+        c.execute("SELECT * FROM users WHERE id = ? OR telegram_id = ?", (telegram_id, telegram_id))
         user = c.fetchone()
         if user:
             return jsonify(user)
@@ -77,35 +78,38 @@ def add_user():
     username = data.get("username")
     photo_url = data.get("photo_url")
     
+    # Обрабатываем custom_id, если он есть
+    custom_id = data.get("id")
+    user_id = custom_id if custom_id is not None else telegram_id
+    
     with sqlite3.connect(DB) as conn:
         conn.row_factory = dict_factory
         c = conn.cursor()
         
-        # Проверяем, существует ли пользователь с таким telegram_id
-        c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+        # Проверяем, существует ли пользователь с таким ID или telegram_id
+        c.execute("SELECT * FROM users WHERE id = ? OR telegram_id = ?", (user_id, telegram_id))
         existing_user = c.fetchone()
         
         if existing_user:
             # Обновляем существующего пользователя
             c.execute("""
                 UPDATE users 
-                SET first_name = ?, last_name = ?, username = ?, photo_url = ?
-                WHERE telegram_id = ?
-            """, (first_name, last_name, username, photo_url, telegram_id))
+                SET first_name = ?, last_name = ?, username = ?, photo_url = ?, telegram_id = ?
+                WHERE id = ?
+            """, (first_name, last_name, username, photo_url, telegram_id, existing_user["id"]))
             conn.commit()
             
-            c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            c.execute("SELECT * FROM users WHERE id = ?", (existing_user["id"],))
             updated_user = c.fetchone()
             return jsonify(updated_user)
         else:
             # Создаем нового пользователя
             c.execute("""
-                INSERT INTO users (telegram_id, first_name, last_name, username, photo_url)
-                VALUES (?, ?, ?, ?, ?)
-            """, (telegram_id, first_name, last_name, username, photo_url))
+                INSERT INTO users (id, telegram_id, first_name, last_name, username, photo_url)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_id, telegram_id, first_name, last_name, username, photo_url))
             conn.commit()
             
-            user_id = c.lastrowid
             c.execute("SELECT * FROM users WHERE id = ?", (user_id,))
             new_user = c.fetchone()
             return jsonify(new_user), 201
