@@ -43,6 +43,73 @@ def dict_factory(cursor, row):
         d[col[0]] = row[idx]
     return d
 
+# Добавляем API для работы с пользователями
+@app.route("/users", methods=["GET"])
+def get_users():
+    with sqlite3.connect(DB) as conn:
+        conn.row_factory = dict_factory
+        c = conn.cursor()
+        c.execute("SELECT * FROM users ORDER BY created_at DESC")
+        users = c.fetchall()
+        return jsonify(users)
+
+@app.route("/users/telegram/<int:telegram_id>", methods=["GET"])
+def get_user_by_telegram_id(telegram_id):
+    with sqlite3.connect(DB) as conn:
+        conn.row_factory = dict_factory
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+        user = c.fetchone()
+        if user:
+            return jsonify(user)
+        return jsonify({"error": "User not found"}), 404
+
+@app.route("/users", methods=["POST"])
+def add_user():
+    data = request.json
+    telegram_id = data.get("telegram_id")
+    first_name = data.get("first_name")
+    
+    if not telegram_id or not first_name:
+        return jsonify({"error": "telegram_id and first_name are required"}), 400
+    
+    last_name = data.get("last_name")
+    username = data.get("username")
+    photo_url = data.get("photo_url")
+    
+    with sqlite3.connect(DB) as conn:
+        conn.row_factory = dict_factory
+        c = conn.cursor()
+        
+        # Проверяем, существует ли пользователь с таким telegram_id
+        c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+        existing_user = c.fetchone()
+        
+        if existing_user:
+            # Обновляем существующего пользователя
+            c.execute("""
+                UPDATE users 
+                SET first_name = ?, last_name = ?, username = ?, photo_url = ?
+                WHERE telegram_id = ?
+            """, (first_name, last_name, username, photo_url, telegram_id))
+            conn.commit()
+            
+            c.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            updated_user = c.fetchone()
+            return jsonify(updated_user)
+        else:
+            # Создаем нового пользователя
+            c.execute("""
+                INSERT INTO users (telegram_id, first_name, last_name, username, photo_url)
+                VALUES (?, ?, ?, ?, ?)
+            """, (telegram_id, first_name, last_name, username, photo_url))
+            conn.commit()
+            
+            user_id = c.lastrowid
+            c.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            new_user = c.fetchone()
+            return jsonify(new_user), 201
+
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
     user_id = request.args.get("user_id")
