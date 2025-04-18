@@ -3,9 +3,11 @@ from flask_cors import CORS
 import sqlite3
 import json
 from datetime import datetime
+import os
 
 app = Flask(__name__)
-CORS(app)
+# Обновляем настройки CORS, чтобы разрешить запросы с фронтенда
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 DB = "db.sqlite3"
 
@@ -102,8 +104,25 @@ def add_task():
         ))
         conn.commit()
         task_id = c.lastrowid
+        
+        # Получаем созданную задачу
+        conn.row_factory = dict_factory
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, user_id, title, description, due_date, due_time, 
+                   notification, priority, tags, attachments, notes, 
+                   location, repeat, done, created_at 
+            FROM tasks 
+            WHERE id = ?
+        """, (task_id,))
+        task = c.fetchone()
+        task['done'] = bool(task['done'])
+        if task['tags']:
+            task['tags'] = json.loads(task['tags'])
+        if task['attachments']:
+            task['attachments'] = json.loads(task['attachments'])
     
-    return jsonify({"success": True, "id": task_id})
+    return jsonify(task)
 
 @app.route("/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
@@ -211,4 +230,6 @@ def get_task(task_id):
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    # Используем переменные окружения для хоста и порта, чтобы приложение работало на Render
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False) 
