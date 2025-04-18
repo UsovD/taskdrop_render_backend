@@ -6,8 +6,8 @@ from datetime import datetime
 import os
 
 app = Flask(__name__)
-# Обновляем настройки CORS, чтобы разрешить запросы с фронтенда
-CORS(app, resources={r"/*": {"origins": "*"}})
+# Обновляем настройки CORS для разрешения всех источников запросов
+CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": "*"}})
 
 DB = "db.sqlite3"
 
